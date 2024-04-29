@@ -1,0 +1,226 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import pandas as pd
+from sklearn.preprocessing import MinMaxScaler
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM
+from tensorflow.keras.layers import Dense
+from tensorflow.keras.layers import Dropout
+
+dataset_train = pd.read_csv('Google_Stock_Price_Train.csv')
+dataset_train.head()
+
+#keras only takes numpy array
+training_set = dataset_train.iloc[:, 1: 2].values
+training_set.shape
+
+sc = MinMaxScaler(feature_range = (0, 1))
+#fit: get min/max of train data
+training_set_scaled = sc.fit_transform(training_set)
+
+## 60 timesteps and 1 output
+X_train = []
+y_train = []
+for i in range(60, len(training_set_scaled)):
+    X_train.append(training_set_scaled[i-60: i, 0])
+    y_train.append(training_set_scaled[i, 0])
+
+X_train, y_train = np.array(X_train), np.array(y_train)
+
+
+
+X_train.shape
+
+y_train.shape
+
+X_train = np.reshape(X_train, newshape = (X_train.shape[0], X_train.shape[1], 1))
+X_train.shape
+
+plt.figure(figsize=(18, 8))
+plt.plot(dataset_train['Open'])
+plt.title("Google Stock Open Prices")
+plt.xlabel("Time (oldest -> latest)")
+plt.ylabel("Stock Open Price")
+plt.show()
+
+plt.figure(figsize=(18, 8))
+plt.plot(dataset_train['Low'])
+plt.title("Google Stock Low Prices")
+plt.xlabel("Time (oldest -> latest)")
+plt.ylabel("Stock Lowest Price")
+plt.show()
+
+regressor = Sequential()
+#add 1st lstm layer
+regressor.add(LSTM(units = 50, return_sequences = True, input_shape = (X_train.shape[1], 1)))
+regressor.add(Dropout(rate = 0.2))
+
+##add 2nd lstm layer: 50 neurons
+regressor.add(LSTM(units = 50, return_sequences = True))
+regressor.add(Dropout(rate = 0.2))
+
+##add 3rd lstm layer
+regressor.add(LSTM(units = 50, return_sequences = True))
+regressor.add(Dropout(rate = 0.2))
+
+##add 4th lstm layer
+regressor.add(LSTM(units = 50, return_sequences = False))
+regressor.add(Dropout(rate = 0.2))
+
+##add output layer
+regressor.add(Dense(units = 1))
+
+regressor.compile(optimizer = 'adam', loss = 'mean_squared_error')
+
+regressor.fit(x = X_train, y = y_train, batch_size = 32, epochs = 100)
+
+
+dataset_test = pd.read_csv('Google_Stock_Price_Test.csv')
+
+dataset_test.head()
+
+#keras only takes numpy array
+real_stock_price = dataset_test.iloc[:, 1: 2].values
+real_stock_price.shape
+
+
+#vertical concat use 0, horizontal uses 1
+dataset_total = pd.concat((dataset_train['Open'], dataset_test['Open']), 
+                          axis = 0)
+##use .values to make numpy array
+inputs = dataset_total[len(dataset_total) - len(dataset_test) - 60:].values
+
+#reshape data to only have 1 col
+inputs = inputs.reshape(-1, 1)
+
+#scale input
+inputs = sc.transform(inputs)
+
+
+len(inputs)
+
+X_test = []
+for i in range(60, len(inputs)):
+    X_test.append(inputs[i-60:i, 0])
+X_test = np.array(X_test)
+#add dimension of indicator
+X_test = np.reshape(X_test, (X_test.shape[0], X_test.shape[1], 1))
+
+X_test.shape
+
+predicted_stock_price = regressor.predict(X_test)
+
+
+#inverse the scaled value
+predicted_stock_price = sc.inverse_transform(predicted_stock_price)
+
+##visualize the prediction and real price
+plt.plot(real_stock_price, color = 'red', label = 'Real price')
+plt.plot(predicted_stock_price, color = 'blue', label = 'Predicted price')
+
+plt.title('Google price prediction')
+plt.xlabel('Time')
+plt.ylabel('Price')
+plt.legend()
+plt.show()
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+
+train_df = pd.read_csv('Google_Stock_Price_Train.csv')
+train_df.info()
+
+test_df = pd.read_csv('Google_Stock_Price_Test.csv')
+test_df.info()
+
+train = train_df.loc[:,["Open"]].values
+train.shape
+
+from sklearn.preprocessing import MinMaxScaler
+scaler = MinMaxScaler()
+
+train_scaled = scaler.fit_transform(train)
+
+plt.plot(train_scaled)
+plt.ylabel("Standardized Values")
+plt.xlabel("Time->")
+plt.show()
+
+x_train = []
+y_train = []
+time = 60
+for i in range(60,train_scaled.shape[0]):
+    x_train.append(train_scaled[i-60:i,0])
+    y_train.append(train_scaled[i,0])
+x_train = np.array(x_train)
+y_train = np.array(y_train)
+
+x_train.shape,y_train.shape
+
+x_train = np.reshape(x_train,newshape=(x_train.shape[0],x_train.shape[1],1))
+x_train.shape
+
+from keras.models import Sequential
+from keras.layers import Dense, SimpleRNN,Dropout
+
+model = Sequential()
+
+model.add(SimpleRNN(units=50,activation = "tanh", return_sequences = True, input_shape = (x_train.shape[1], 1)))
+model.add(Dropout(0.2))
+
+model.add(SimpleRNN(units=50,activation = "tanh", return_sequences = True))
+model.add(Dropout(0.2))
+
+model.add(SimpleRNN(units=50,activation = "tanh", return_sequences = True))
+model.add(Dropout(0.2))
+
+model.add(SimpleRNN(units=50))
+model.add(Dropout(0.2))
+
+model.add(Dense(units=1))
+
+model.compile(optimizer='adam',loss='mse')
+model.summary()
+
+model.fit(x_train,y_train,epochs=100,batch_size=30,validation_split=0.05)
+
+data = pd.concat((train_df['Open'],test_df['Open']),axis=0)
+
+test_input = data.iloc[len(data) - len(test_df) - time : ].values
+test_input.shape
+
+test_input = test_input.reshape(-1,1)
+test_input.shape
+
+test_scaled = scaler.transform(test_input)
+
+x_test = []
+for i in range(time,test_scaled.shape[0]):
+    x_test.append(test_scaled[i - time: i,0 ])
+x_test = np.array(x_test)
+x_test.shape
+
+x_test = np.reshape(x_test,newshape=(x_test.shape[0],x_test.shape[1],1))
+x_test.shape
+
+y_test = test_df.loc[:,"Open"].values
+
+y_pred = model.predict(x_test)
+
+y_pred = scaler.inverse_transform(y_pred)
+
+output = model.evaluate(x=x_test,y=y_test)
+
+plt.plot(y_test, color = 'red', label = 'Real price')
+plt.plot(y_pred, color = 'blue', label = 'Predicted price')
+
+plt.title('Google Stock price prediction')
+plt.xlabel('Time')
+plt.ylabel('Price')
+plt.legend()
+plt.show()
+
+
+
